@@ -1,0 +1,236 @@
+import tkinter as tk
+from tkinter import messagebox
+import mysql.connector
+import bcrypt
+
+# Connexion à la base de données MySQL
+def connect_to_db():
+    try:
+        return mysql.connector.connect(
+            host="localhost",        # Hôte de votre serveur MySQL
+            user="root",             # Nom d'utilisateur MySQL
+            password="password",     # Mot de passe MySQL
+            database="finance"       # Nom de la base de données
+        )
+    except mysql.connector.Error as err:
+        messagebox.showerror("Erreur de connexion", f"Erreur lors de la connexion à la base de données: {err}")
+        return None
+
+# Création de la base de données et des tables si elles n'existent pas
+def create_db():
+    conn = connect_to_db()
+    if conn is None:
+        return
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(100),
+                        email VARCHAR(100) UNIQUE,
+                        password VARCHAR(100))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS transactions (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id INT,
+                        reference VARCHAR(50),
+                        description TEXT,
+                        amount DECIMAL(10, 2),
+                        date DATE,
+                        type VARCHAR(50),
+                        category VARCHAR(50),
+                        FOREIGN KEY(user_id) REFERENCES users(id))''')
+    conn.commit()
+    conn.close()
+
+# Hachage du mot de passe
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+# Vérification du mot de passe
+def check_password(password, hashed_password):
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password)
+
+# Inscription d'un nouvel utilisateur
+def register_user(name, email, password):
+    conn = connect_to_db()
+    if conn is None:
+        return False
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
+    if cursor.fetchone():
+        messagebox.showerror("Erreur", "L'email est déjà utilisé.")
+        conn.close()
+        return False
+    hashed_password = hash_password(password)
+    cursor.execute("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+                   (name, email, hashed_password))
+    conn.commit()
+    conn.close()
+    messagebox.showinfo("Succès", "Inscription réussie!")
+    return True
+
+# Connexion d'un utilisateur
+def login_user(email, password):
+    conn = connect_to_db()
+    if conn is None:
+        return None
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
+    user = cursor.fetchone()
+    conn.close()
+    if user and check_password(password, user[3]):
+        return user[0]  # Retourne l'ID de l'utilisateur
+    else:
+        messagebox.showerror("Erreur", "Email ou mot de passe incorrect.")
+        return None
+
+# Ajout d'une transaction
+def add_transaction(user_id, reference, description, amount, date, type_, category):
+    conn = connect_to_db()
+    if conn is None:
+        return
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO transactions (user_id, reference, description, amount, date, type, category) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                   (user_id, reference, description, amount, date, type_, category))
+    conn.commit()
+    conn.close()
+
+# Affichage de l'historique des transactions
+def show_transactions(user_id):
+    conn = connect_to_db()
+    if conn is None:
+        return
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE user_id=%s", (user_id,))
+    transactions = cursor.fetchall()
+    conn.close()
+    
+    for widget in transaction_list_frame.winfo_children():
+        widget.destroy()
+
+    for transaction in transactions:
+        tk.Label(transaction_list_frame, text=f"Référence: {transaction[2]} | Montant: {transaction[3]} | Type: {transaction[6]} | Date: {transaction[5]}").pack()
+
+# Fenêtre principale
+root = tk.Tk()
+root.title("Gestion Financière")
+
+# Créer la base de données
+create_db()
+
+# Variables globales
+current_user_id = None
+
+# Fonctions de navigation
+def show_login_page():
+    for widget in root.winfo_children():
+        widget.destroy()
+    
+    tk.Label(root, text="Connexion").pack(pady=10)
+    tk.Label(root, text="Email").pack()
+    email_entry = tk.Entry(root)
+    email_entry.pack()
+    tk.Label(root, text="Mot de passe").pack()
+    password_entry = tk.Entry(root, show="*")
+    password_entry.pack()
+
+    def login():
+        email = email_entry.get()
+        password = password_entry.get()
+        user_id = login_user(email, password)
+        if user_id:
+            global current_user_id
+            current_user_id = user_id
+            show_dashboard()
+
+    tk.Button(root, text="Se connecter", command=login).pack(pady=10)
+    tk.Button(root, text="S'inscrire", command=show_register_page).pack()
+
+def show_register_page():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    tk.Label(root, text="Inscription").pack(pady=10)
+    tk.Label(root, text="Nom").pack()
+    name_entry = tk.Entry(root)
+    name_entry.pack()
+    tk.Label(root, text="Email").pack()
+    email_entry = tk.Entry(root)
+    email_entry.pack()
+    tk.Label(root, text="Mot de passe").pack()
+    password_entry = tk.Entry(root, show="*")
+    password_entry.pack()
+
+    def register():
+        name = name_entry.get()
+        email = email_entry.get()
+        password = password_entry.get()
+        if len(password) < 10:
+            messagebox.showerror("Erreur", "Le mot de passe doit contenir au moins 10 caractères.")
+        else:
+            if register_user(name, email, password):
+                show_login_page()
+
+    tk.Button(root, text="S'inscrire", command=register).pack(pady=10)
+
+def show_dashboard():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    tk.Label(root, text="Tableau de bord").pack(pady=10)
+    tk.Button(root, text="Ajouter une transaction", command=show_add_transaction_page).pack(pady=5)
+    tk.Button(root, text="Afficher l'historique", command=lambda: show_transactions(current_user_id)).pack(pady=5)
+    tk.Button(root, text="Déconnexion", command=show_login_page).pack(pady=5)
+
+    # Liste des transactions
+    global transaction_list_frame
+    transaction_list_frame = tk.Frame(root)
+    transaction_list_frame.pack(pady=10)
+
+def show_add_transaction_page():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+    tk.Label(root, text="Ajouter une transaction").pack(pady=10)
+    tk.Label(root, text="Référence").pack()
+    reference_entry = tk.Entry(root)
+    reference_entry.pack()
+    tk.Label(root, text="Description").pack()
+    description_entry = tk.Entry(root)
+    description_entry.pack()
+    tk.Label(root, text="Montant").pack()
+    amount_entry = tk.Entry(root)
+    amount_entry.pack()
+    tk.Label(root, text="Date").pack()
+    date_entry = tk.Entry(root)
+    date_entry.pack()
+    tk.Label(root, text="Type (retrait, dépôt, transfert)").pack()
+    type_entry = tk.Entry(root)
+    type_entry.pack()
+    tk.Label(root, text="Catégorie").pack()
+    category_entry = tk.Entry(root)
+    category_entry.pack()
+
+    def add_transaction_to_db():
+        reference = reference_entry.get()
+        description = description_entry.get()
+        try:
+            amount = float(amount_entry.get())
+        except ValueError:
+            messagebox.showerror("Erreur", "Le montant doit être un nombre valide.")
+            return
+        date = date_entry.get()
+        type_ = type_entry.get()
+        category = category_entry.get()
+
+        if not reference or not description or not type_ or not category:
+            messagebox.showerror("Erreur", "Tous les champs doivent être remplis.")
+            return
+
+        add_transaction(current_user_id, reference, description, amount, date, type_, category)
+        show_dashboard()
+
+    tk.Button(root, text="Ajouter la transaction", command=add_transaction_to_db).pack(pady=10)
+
+# Lancer la page de connexion
+show_login_page()
+
+root.mainloop()
