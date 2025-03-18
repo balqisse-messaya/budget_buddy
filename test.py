@@ -42,8 +42,11 @@ custom_display = Label(main_window, text="Application inventaire", font=("Helvet
 custom_display.pack()
 
 rows = display_allproducts()
+
+liste = Listbox(main_window)
+liste.pack()
+
 for r in rows :
-    ligne = custom_display = Label(main_window, text=r, font=("Helvetica, 12"))
-    ligne.pack()
+    liste.insert(END, r)
 
 main_window.mainloop()
