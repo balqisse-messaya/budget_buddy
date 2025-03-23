@@ -12,9 +12,9 @@ CREATE TABLE transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     category VARCHAR(100),
-    amount DECIMAL(10, 2),
-    date DATE,
-    type ENUM('withdrawal', 'deposit', 'transfer') NOT NULL,
+    amount INT,
+    datetr DATE,
+    typetr ENUM('withdrawal', 'deposit', 'transfer') NOT NULL,
     id_recipient INT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
